@@ -1,0 +1,297 @@
+---
+title: "Junhua Tan Final Report"
+author: "Junhua Tan"
+date: "06/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This data was uploaded on Kaggle for the purpose of training a prediction model in which predict the game outcome of a MOBA (multiplayer online battle arena) game, League of Legends (LoL), by looking at the first 10 min worth of data (data source: League of Legends Diamond Ranked Games (10 min), Version 1. Retrieved April 24, 2020 from https://www.kaggle.com/bobbyscience/league-of-legends-diamond-ranked-games-10-min). To collect this data, I will simply download from the kaggle website where the csv version of the dataset is uploaded. The data contains 1 csv file with 9879 instances of 39 attributes. Fortunately, the data has no missing values. 10% of the total data is splited as the test set for testing classification results from model building. 20% of the remaining 90% of training data is splitted for conducting an EDA previously. 
+
+## Initial Set-ups
+
+### Load Libraries
+
+```{r, message=FALSE, warning=FALSE}
+# Load packages
+library(tidyverse)
+library(modelr)
+library(janitor)
+library(skimr)
+library(rsample)
+library(corrplot)
+library(caret)
+library(glmnet)
+
+# random forest
+library(randomForest)
+```
+
+### Set Seed
+
+```{r, warning=FALSE, message=FALSE}
+RNGversion("3.5")
+set.seed(27182)
+```
+
+### Read processed dataset
+```{r, warning=FALSE}
+# Data is pre-splitted in data_cleaning.R
+train <- read_csv(
+  "data/processed/games_train.csv",
+  col_types = cols(
+    blue_wins = col_factor(),
+    first_blood = col_factor(),
+    dragons = col_factor(), # 0: None, 1: blue, -1: red
+    heralds = col_factor() # 0: None, 1: blue, -1: red
+  )) %>%
+  clean_names()
+
+test <- read_csv(
+  "data/processed/games_test.csv",
+  col_types = cols(
+    blue_wins = col_factor(),
+    first_blood = col_factor(),
+    dragons = col_factor(), # 0: None, 1: blue, -1: red
+    heralds = col_factor() # 0: None, 1: blue, -1: red
+  )) %>% 
+  clean_names()
+```
+
+### View proportion of response variable in training data.
+```{r, warning=FALSE}
+train %>% 
+  skim_without_charts() # NO missing values
+
+# Proportions of Blue Wins (~Half)
+# This is a balanced dataset.
+train %>% 
+  count(blue_wins) %>% 
+  mutate(prop = n/sum(n))
+```
+
+We have no missing values in the dataset, and the data is approximately balanced for the response variable.
+
+### Correlation Plot
+```{r}
+train %>% 
+  select(-blue_wins, -first_blood, -dragons, -heralds) %>% 
+  cor() %>% 
+  corrplot()
+```
+
+However, there is high multicollinearity between variables such that most variables like `experience`, `kills`, `assists` and others are highly related.
+
+---
+
+## Best subset variable selection
+
+```{r}
+# 10-folds CV repeat 3 times
+control <- trainControl(method='repeatedcv', 
+                        number=10, 
+                        repeats=3)
+```
+
+```{r}
+# Helper function to calculate accuracy
+calc_acc = function(actual, predicted) {
+  mean(actual == predicted)
+}
+```
+
+### Ridge, Lasso, and Elastic Net
+
+```{r}
+# Create train and test tibble
+game_db <- tibble(
+  train = train %>% list(),
+  test = test %>% list())
+```
+
+```{r}
+# lambda grid to search -- use for ridge&lasso classification (200 values)
+lambda_grid <- 10^seq(-2, 10, length = 200)
+```
+
+#### Lasso 
+
+```{r}
+# lasso: 10-fold cv
+lasso_cv <- game_db %>% 
+  pluck("train", 1) %>% 
+  glmnetUtils::cv.glmnet(
+    formula = blue_wins ~ . , 
+    data = ., 
+    alpha = 1, 
+    nfolds = 10,
+    family = "binomial"
+  )
+
+plot(lasso_cv)
+```
+
+Deviance increases as variables decreases.
+
+```{r}
+lasso_mod <- train(
+  form = blue_wins ~ .,
+  data = train,
+  trControl = control,
+  method = "glmnet",
+  tuneGrid = expand.grid(alpha = 1, lambda = lambda_grid)
+)
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(lasso_mod, newdata = test))
+
+coef(lasso_mod$finalModel, lasso_mod$bestTune$lambda)
+```
+
+Based on best-tuned lasso results, the variables used in training are `dragons`, `experience`, `kills`, `gold_per_min`, and `elite_monsters`.
+
+#### Ridge
+
+```{r}
+# ridge regression: 10-fold cv
+ridge_cv <- game_db %>% 
+  pluck("train", 1) %>% 
+  glmnetUtils::cv.glmnet(
+    formula = blue_wins ~ ., 
+    data = .,
+    alpha = 0, # for ridge regression
+    nfolds = 10,
+    lambda = lambda_grid,
+    family = "binomial"
+  )
+
+# Check plot of cv error
+plot(ridge_cv)
+```
+
+```{r}
+ridge_mod <- train(
+  form = blue_wins ~ .,
+  data = train,
+  trControl = control,
+  method = "glmnet",
+  tuneGrid = expand.grid(alpha = 0, lambda = lambda_grid)
+)
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(ridge_mod, newdata = test))
+
+coef(ridge_mod$finalModel, ridge_mod$bestTune$lambda)
+```
+
+Based on best-tuned Ridge result, the variables that have coeffient of near +/-0.1 are `first_blood`, `dragons`, `towers_destroyed`, `avg_level`, and `elite_monsters`. Prediction using Lasso produces a slightly better accuracy of 74.5%.
+
+## Classification Algorithm
+
+### GLM
+
+```{r}
+# Using varaibles from Lasso
+(glm_mod <- train(
+  form = blue_wins ~ experience + kills + gold_per_min + dragons + elite_monsters,
+  data = train,
+  trControl = control,
+  method = "glm",
+  family = "binomial"
+))
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(glm_mod, newdata = test))
+
+# Using varaibles from Ridge (coef > 0.1)
+(glm_mod2 <- train(
+  form = blue_wins ~ first_blood + dragons + towers_destroyed + avg_level + elite_monsters,
+  data = train,
+  trControl = control,
+  method = "glm",
+  family = "binomial"
+))
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(glm_mod2, newdata = test))
+```
+
+Using linear regression with Lasso variables produced a better accuracy of 73.5% than variables from Ridge.
+
+### KNN
+
+```{r}
+knn_mod = train(
+  form = blue_wins ~ experience + kills + gold_per_min + dragons + elite_monsters,
+  data = train,
+  trControl = control,
+  method = "knn",
+  preProcess = c("center", "scale"),
+  tuneGrid = expand.grid(k = seq(1, 101, by = 2))
+)
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(knn_mod, newdata = test))
+
+plot(knn_mod)
+knn_mod$bestTune
+```
+
+The best-tuned k-value for KNN model is 87, and the accuracy is 73.3%.
+
+### LDA
+
+```{r, warning=F}
+(lda_mod = train(
+  form = blue_wins ~ .,
+  data = train,
+  trControl = control,
+  preProcess = c('scale', 'center'),
+  method = "lda"
+))
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(lda_mod, newdata = test))
+```
+
+The predicted accuracy using LDA is highest of ~74.7%.
+
+### Random Forest
+
+```{r}
+(rf_mod <- train(
+  form = blue_wins ~ .,
+  data = train,
+  trControl = control,
+  method = "rf"
+))
+
+# Predict and test performance on test data
+calc_acc(actual = test$blue_wins,
+         predicted = predict(rf_mod, newdata = test))
+```
+
+The predicted accuracy using random forest is highest of ~72.9% using mtry of 2. 
+
+## Final Result Table
+
+```{r}
+tibble(
+  Model = c("Lasso", "Ridge", "GLM1_Lasso", "GLM2_Ridge", "KNN_87", "LDA", "Random Forest"),
+  Accuracy = c(0.7459514, 0.7419028, 0.7408907, 0.7196356, 0.7368421, 0.7469636, 0.7287449)
+) %>% 
+  arrange(desc(Accuracy))
+```
+
+Overall, the accuracies for these machine learning methods ranged between 71-74%, with LDA performs the best out of all. In the next step, I plan to work on tuning random forest and explore other possible methods such as SVM to increase the accuracy.

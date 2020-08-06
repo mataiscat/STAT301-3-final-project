@@ -1,0 +1,29 @@
+---
+title: "Final Project Data Memo"
+author: "Junhua Tan"
+date: "4/22/2020"
+output: html_document
+---
+
+# Data Memo Format
+
+## Data Science II (STAT 301-3)
+
+Create this memo once you have identified a dataset to use for your final project and turn it in as a compiled HTML file (use R Markdown). The completed memo should be between 1 and 2 pages (approximately, if text is put into Word or PDF).
+
+### Data Source
+
+Identify and describe your data source or sources -- citations would be appropriate. Citations will typically include links to the data source; otherwise, provide the data in a zip file with this submission. Propose some additional pieces of information (baseline statistics, maps, other data points, other datasets) that may be helpful in your project. Do you anticipate joining your dataset with external datasets? Where do you plan to look for this data?
+
+This data was uploaded on Kaggle for the purpose of training a prediction model in which predict the game outcome of a MOBA (multiplayer online battle arena) game, League of Legends (LoL), by looking at the first 10 min worth of data (data source: League of Legends Diamond Ranked Games (10 min), Version 1. Retrieved April 24, 2020 from https://www.kaggle.com/bobbyscience/league-of-legends-diamond-ranked-games-10-min). To collect this data, I will simply download from the kaggle website where the csv version of the dataset is uploaded. The data contains 1 csv file with 9879 instances of 39 attributes. Fortunately, the data has no missing values. However, if the data is found to be insufficient, I might download and join with more data from the Riot API published by the game company for more informations. The main focus of this final project will be the exploratory data analysis as well as model building and tuning. I will split 10% of the total data as the test set for testing classification results from model building. I will also split 20% of the remaining 90% of training data for conducting an EDA, which include graphics that demonstrated some important relationships between the predictor variables and the response. Another important insight I hope to explore in this project is to determine what are the variables important for predicting a game outcome, and hopefully, we will find this answer with the techniques we will learn this quarter.
+
+### Why this Dataset
+
+State and define your possible questions of interest. Include whether you are interested in prediction or inference, and whether your problem is classification or regression. State whether your core data supports your type of question (example: if you will be making inferences, is there random assignment in your data?).
+
+The research question for this project is to predict the outcome (win or loss) given first 10 minutes of game statistics. Additionally if time allows, I will also explore what are the factors important for predicting this outcome, which will be reflective in level of significance in the prediction model. A classification approach will work best given our goal is to predict the response variable `blue_wins`, which is the win (1) or loss (0) of the game at the blue side given the first 10 minutes of the status in game.
+
+### Potential Data Issues
+Identify any potential issues you may face in preparing or analyzing your data, including any merging, cleaning, or processing that may be necessary. Include any challenges you anticipate in the building of your models. Consider anything that may take extra time that is unique to your dataset.
+
+From skimming on the predictors so far, there are defeinitely repeated predictors such as `blue_first_blood` and `red_first_blood` which are mutually exclusive, as well as some highly correlated predictors such as `blue_cs_per_min` and `blue_total_minion_killed`. There are also predictors that are opposite but equal with each other due to the nature of the game being divided in two side, for example, `blue_gold_difference` and `red_gold_difference`. During data cleaning, I will identify these predictors and trim down the dimension of the dataset before model fitting. At short glimpse, all variables are stored as integer types but some should be classified as factor. I will also make this change in data cleaning. 

@@ -1,0 +1,299 @@
+---
+title: "Final Project EDA"
+author: "Junhua Tan"
+date: "5/11/2020"
+output: html_document
+---
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+library(tidyverse)
+library(janitor)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+eda_dat <- read_csv(
+  "data/processed/games_eda.csv",
+  col_types = cols(
+    blue_wins = col_factor(),
+    first_blood = col_factor(),
+    dragons = col_factor(), # 0: None, 1: blue, -1: red
+    heralds = col_factor() # 0: None, 1: blue, -1: red
+  )) %>% 
+  clean_names()
+```
+
+## Initial Overview
+
+### Win Rates
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  count(blue_wins) %>% 
+  mutate(prop = n/sum(n))
+```
+
+* There are about the same amount of data that the blue team wins and losses.
+
+### Variables
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  skimr::skim_without_charts()
+```
+
+* There are total of 1778 observations in the EDA dataset splited from the original source from Kaggle. [data source: League of Legends Diamond Ranked Games (10 min), Version 1. Retrieved April 24, 2020 from https://www.kaggle.com/bobbyscience/league-of-legends-diamond-ranked-games-10-min]
+* There are total of 14 predictors to the response variable `blue_wins`.
+* There are no missing values in any of the variables.
+
+## Essential Findings
+
+### Wins and First Blood
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  group_by(first_blood) %>% 
+  mutate(wins = ifelse(blue_wins == "1", 1, 0)) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = first_blood, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3", width = 0.6) +
+  scale_x_discrete (limits = c("0", "1")) +
+  labs(
+    x = "Blue Scores for First Blood",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and First Blood",
+    subtitle = "0: red scores first blood, 1: blue scores first blood"
+  )
+```
+
+* First blood is the first kill in the game, rewarded by additional gold and experience than other kills.
+* There is a positive relationship between scoring first blood in the game and winning, as shown by the higher proportion of wins for the blue side when it scores for first blood (`first_blood == 1`).
+
+### Wins and Dragons
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  group_by(dragons) %>% 
+  mutate(dragon = ifelse(dragons == "1", 1, 0)) %>% 
+  summarise(
+    total = n(),
+    prop = total/1778
+  )
+```
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  group_by(dragons) %>% 
+  mutate(wins = ifelse(blue_wins == "1", 1, 0)) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = dragons, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3", width = 0.6) + 
+  scale_x_discrete (limits = c("-1", "0", "1")) +
+  labs(
+    x = "Blue Scores for Dragons",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Dragons",
+    subtitle = "-1: red scores dragon, 0: none scores dragon, 1: blue scores dragon"
+  )
+```
+
+* Dragon is an elite monster which gives team bonus when killed.
+* When the opposite (red) side scores the dragon, proportion of wins is less than 0.5 and vice versa.
+* When both teams did not scores the dragon in the first 10 minutes (which accounts for 22.8% of the EDA dataset), the proportion of wins for blue is around 0.5, that is, both sides have the same proportion of wins.
+* Overall, there is a positive relationship between scoring a dragon and winning such that the side which scores a dragon tend to have a higher proportion of wins.
+
+### Wins and Wards Placed
+
+```{r, echo=FALSE}
+# Wards Place
+ward <- function(x) {
+  cut(x, 
+    breaks = c(-Inf, -100, -50, -30, -15, 0, 15, 30, 50, 100, Inf)
+  )
+}
+```
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  mutate(
+    wins = ifelse(blue_wins == "1", 1, 0),
+    wards = ward(wards_placed)) %>% 
+  group_by(wards) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = wards, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  labs(
+    x = "Difference in Wards Placed (blue-red)",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Wards Placed"
+  )
+```
+
+* Ward totems are items that players can put on the map to reveal the nearby area. Very useful for map/objectives control.
+* Interesting, the amount of wards placed does not seem to have a correlation with wins. At range between (-Inf, 50], the proportion of blue wins stays around 0.5. And significantly drop at (50, 100] but increases with (100, Inf). This unexpected behaviors at the extreme might due to the lack of data points and extreme team match.
+
+### Wins and Wards Destoryed
+
+```{r, echo=FALSE}
+# Wards Destoryed
+ward_d <- function(x) {
+  cut(x, 
+    breaks = c(-Inf, -20, -10, -5, 0, 5, 10, 20, Inf)
+  )
+}
+```
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  mutate(
+    wins = ifelse(blue_wins == "1", 1, 0),
+    wards_d = ward_d(wards_destroyed)) %>% 
+  group_by(wards_d) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = wards_d, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  labs(
+    x = "Difference in Wards Destoryed (blue-red)",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Wards Destoryed"
+  )
+```
+
+* The amount of wards destoryed, however, seems to have a positive relationship with winning. When we disregards extreme values, we can see a positive correlation such that as the amount of ward destoryed increases, the proportion of winning also increases. 
+* The unexpected proportion at the extreme where blue wins more when the enemy destoryed (-20, -10] and oppositively loses more when the blue destories (10, 20] might suggests over-investment in ward destruction that affects the win rate.
+
+## Secondary Findings
+
+### Wins and Kills
+
+```{r, echo=FALSE}
+mean_kills <- mean(eda_dat$kills)
+
+eda_dat %>% 
+  group_by(kills) %>% 
+  mutate(wins = ifelse(blue_wins == "1", 1, 0)) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = kills, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  geom_vline(xintercept = mean_kills) +
+  labs(
+    x = "Difference in Kills (blue-red)",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Kills",
+    subtitle = "solid black line at mean kills"
+  )
+```
+
+* As expected, when there is a disadvantage in kills for the blue side, the proportion of wins for blue is less and vice versa.
+* When there is no difference in kills (~0), the proportion of wins for blue is around 0.5, that is, both sides have the same proportion of wins.
+* Overall, there is a positive relationship between numbers of kills and winning such that scoring more kills than the other side tends to have a higher proportion of wins.
+
+### Wins and Experience
+
+```{r, echo=FALSE}
+# Wards Destoryed
+exp <- function(x) {
+  cut(x, 
+    breaks = c(-Inf, -4000, -1000, -500, 0, 500, 1000, 4000, Inf)
+  )
+}
+```
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  mutate(
+    wins = ifelse(blue_wins == "1", 1, 0),
+    exp = exp(experience)) %>% 
+  group_by(exp) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = exp, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  labs(
+    x = "Difference in Experience",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Experience"
+  )
+```
+
+* Experience is the requirement for level up in games, it can be gained from killing minions, enemies, elite monsters (dragon or herald) as well as destorying towers. 
+* The difference in total experience of the teams have a positive relationship with proportion of winning such that as this difference increases (i.e. blue team has more experience than the red team), the proportion of blue winning also increases. 
+* A small difference in experience (-500, 500] does not show an obvious effect in winning such that the proportion of wins is around 0.5 from the bar chart. Only those above the threshold of 500 shows effective for predicting wins.
+
+### Wins and Gold Per Minutes
+
+```{r, echo=FALSE}
+# Wards Destoryed
+gold <- function(x) {
+  cut(x, 
+    breaks = c(-Inf, -500, -200, -50, 0, 50, 200, 500, Inf)
+  )
+}
+```
+
+```{r, echo=FALSE}
+eda_dat %>% 
+  mutate(
+    wins = ifelse(blue_wins == "1", 1, 0),
+    gold = gold(gold_per_min)) %>% 
+  group_by(gold) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = gold, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  labs(
+    x = "Difference in Gold Per Minute",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Gold Per Minute"
+  )
+```
+
+* Gold per minute is the measure for amount of gold gained in one minute. Gold is used for purchasing items in games such as weapons as well as ward totems in games, it can be gained from killing minions, enemies, elite monsters (dragon or herald) as well as destorying towers. 
+* Similarily, the difference in gold per minutes of the two teams also have a positive relationship with proportion of winning such that as this difference increases (i.e. blue team is more capable of generating golds per minute than the red team), the proportion of blue winning also increases. 
+* Again, a small difference in gold per minutes (-50, 50] does not show an obvious effect in winning such that the proportion of wins is around 0.5 from the bar chart. Only those above the threshold of 500 shows effective for predicting wins.
+
+### Wins and Tower Destoryed
+
+```{r, echo=FALSE}
+mean_tower_destoryed <- mean(eda_dat$towers_destroyed)
+
+eda_dat %>% 
+  group_by(towers_destroyed) %>% 
+  mutate(wins = ifelse(blue_wins == "1", 1, 0)) %>% 
+  summarise(
+    total = n(),
+    prop = sum(wins)/total
+  ) %>% 
+  ggplot(aes(x = towers_destroyed, y = prop)) +
+  geom_bar(stat = "identity", fill = "lightblue3") +
+  geom_vline(xintercept = mean_tower_destoryed) +
+  labs(
+    x = "Difference in Tower Destoryed (blue-red)",
+    y = "Proportion of Wins for Blue",
+    title = "Wins and Tower Destoryed",
+    subtitle = "solid black line at mean tower destoryed"
+  )
+```
+
+* Tower is a structure you have to destroy to reach the enemy Nexus (goal of the game). Destruction of tower will give gold and experience.
+* As expected, when the opposite (red) side takes down more towers (closer to the goal of the Nexus), proportion of wins is significantly less than 0.5 and vice versa.
+* When both teams takes down the same amount of towers in the first 10 minutes, which is also the average tower takedown difference, the proportion of wins for blue is around 0.5 and both sides have the same proportion of wins.
+* Overall, there is a positive relationship between numbers of tower destoryed and winning such that the side with more tower destoryed tends to have a higher proportion of wins.
